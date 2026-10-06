@@ -1,6 +1,6 @@
 <script>
 (async () => {
-const _PREV_VER = '1.0.2';//版本
+const _PREV_VER = '1.0.2';//新版本
 const _SIG = '@@THEME_PLUGIN_ID@@';
 const UPDATE_CHECK_URL = 'https://cdn.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/latest.json';
 let _manifest = null;
@@ -31,9 +31,10 @@ const _fetchManifest = async () => {
 const _applyPluginJs = async (newJsUrl) => {
   const tmpJs = '/data/local/tmp/_theme_new.js';
   await _run(`rm -f ${_sq(tmpJs)}`, 2000);
-  const dl = await _run(`curl -sL --connect-timeout 8 --max-time 60 ${_sq(newJsUrl)} -o ${_sq(tmpJs)} && wc -c < ${_sq(tmpJs)}`, 65000);
-  const size = parseInt(String(dl?.content || '0').trim(), 10) || 0;
-  if (size < 500) { await _run(`rm -f ${_sq(tmpJs)}`); throw new Error('新文件下载失败或过小'); }
+    await _run(`curl -sL --connect-timeout 8 --max-time 60 ${_sq(newJsUrl)} -o ${_sq(tmpJs)}`, 65000);
+  const sizeR = await _run(`stat -c %s ${_sq(tmpJs)} 2>/dev/null || echo 0`, 5000);
+  const size = parseInt(String(sizeR?.content || '0').trim(), 10) || 0;
+  if (size < 500) { await _run(`rm -f ${_sq(tmpJs)}`); throw new Error('新文件下载失败或过小(实际:' + size + ')'); }
   
   const currentText = await getCustomHead();
   if (!currentText) throw new Error('无法读取插件列表');
