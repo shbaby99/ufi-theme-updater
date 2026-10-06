@@ -79,21 +79,6 @@ const _applyPluginJs = async (newJsUrl, prevVer) => {
   return true;
 };
 
-const _checkUpdateInBackground = async () => {
-  try {
-    const m = await _fetchManifest();
-    if (!m) return;
-    _manifest = m;
-    if (m.version === _PREV_VER) return;
-    // 弹窗打开时，动态修改标题
-    const titleEl = document.querySelector('#' + MODAL + ' .title');
-    if (titleEl && !titleEl.querySelector('#ufi-title-update')) {
-      titleEl.innerHTML += ` <span id="ufi-title-update" style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;font-size:.65rem;color:#4ade80;cursor:pointer;font-weight:normal;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 4px #4ade80;"></span>有新版本！</span>`;
-      document.querySelector('#ufi-title-update').onclick = () => _performUpdateFlow();
-    }
-  } catch (e) { console.warn('[Theme Updater]', e); }
-};
-
 const _performUpdateFlow = async () => {
   if (_updating) return;
   if (!_manifest) { _manifest = await _fetchManifest(); }
@@ -668,8 +653,19 @@ const resumeObserver = () => {
 ensureStyle();
 initObserver();
 
-const openModal = () => {
-  const hasUpdate = _manifest && _manifest.version && _manifest.version !== _PREV_VER;
+const openModal = async () => {
+  // 每次打开弹窗时，强制去拉取最新的 latest.json
+  let hasUpdate = false;
+  try {
+    const m = await _fetchManifest();
+    if (m && m.version !== _PREV_VER) {
+      _manifest = m;
+      hasUpdate = true;
+    }
+  } catch (e) {
+    console.warn('[Theme Updater] 检查更新失败:', e);
+  }
+
   let titleHtml = '<span style="font-size:1.05rem;">🎨 shbay主题风格插件</span> <span style="font-size:.65rem;opacity:.6;font-weight:normal;margin-left:6px;">v' + _PREV_VER + '</span>';
   if (hasUpdate) {
     titleHtml += ' <span id="ufi-title-update" style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;font-size:.65rem;color:#4ade80;cursor:pointer;font-weight:normal;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 4px #4ade80;"></span>有新版本！</span>';
