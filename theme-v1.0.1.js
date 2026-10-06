@@ -1,9 +1,8 @@
 <script>
 (async () => {
-const _PREV_VER = '1.0.1'; 
-const _SIG = '@@THEME_PLUGIN_ID@@'; 
+const _PREV_VER = '1.0.0';
+const _SIG = '@@THEME_PLUGIN_ID@@';
 const UPDATE_CHECK_URL = 'https://cdn.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/latest.json';
-const UPDATE_CDN_MIRRORS = ['cdn.jsdelivr.net', 'cdn.jsdmirror.com', 'jsd.onmicrosoft.cn'];
 let _manifest = null;
 let _updating = false;
 
@@ -14,23 +13,11 @@ const _run = async (cmd, timeout = 30000) => {
   catch { return { content: '' }; }
 };
 
-const _probeBestCdn = async () => {
-  const results = [];
-  for (const node of UPDATE_CDN_MIRRORS) {
-    const url = UPDATE_CHECK_URL.replace('cdn.jsdelivr.net', node);
-    const start = Date.now();
-    const r = await _run(`curl -sL --connect-timeout 3 --max-time 5 -w '%{http_code}' -o /dev/null ${_sq(url)}`, 8000);
-    if (String(r?.content || '').trim() === '200') results.push({ node, rtt: Date.now() - start });
-  }
-  return results.length ? results.sort((a, b) => a.rtt - b.rtt)[0].node : 'cdn.jsdelivr.net';
-};
-
 const _fetchManifest = async () => {
-  const bestNode = await _probeBestCdn();
-  const url = UPDATE_CHECK_URL.replace('cdn.jsdelivr.net', bestNode) + '?_=' + Date.now();
+  const url = UPDATE_CHECK_URL + '?_=' + Date.now();
   const tmp = '/data/local/tmp/_theme_manifest.tmp';
   await _run(`rm -f ${_sq(tmp)}`, 1000);
-  const r = await _run(`curl -sL --connect-timeout 8 --max-time 30 ${_sq(url)} -o ${_sq(tmp)} && cat ${_sq(tmp)}`, 40000);
+  const r = await _run(`curl -sL --connect-timeout 5 --max-time 10 ${_sq(url)} -o ${_sq(tmp)} && cat ${_sq(tmp)}`, 15000);
   const text = String(r?.content || '').trim();
   await _run(`rm -f ${_sq(tmp)}`, 1000);
   if (!text || text[0] !== '{') return null;
@@ -41,7 +28,7 @@ const _fetchManifest = async () => {
   return null;
 };
 
-const _applyPluginJs = async (newJsUrl, prevVer) => {
+const _applyPluginJs = async (newJsUrl) => {
   const tmpJs = '/data/local/tmp/_theme_new.js';
   await _run(`rm -f ${_sq(tmpJs)}`, 2000);
   const dl = await _run(`curl -sL --connect-timeout 8 --max-time 60 ${_sq(newJsUrl)} -o ${_sq(tmpJs)} && wc -c < ${_sq(tmpJs)}`, 65000);
@@ -57,9 +44,8 @@ const _applyPluginJs = async (newJsUrl, prevVer) => {
   const pluginRegex = new RegExp(_esc(_PS) + '\\s*(.*?)\\s*-->([\\s\\S]*?)' + _esc(_PE) + '\\s*\\1\\s*-->', 'g');
   
   const newJs = await _run(`cat ${_sq(tmpJs)}`, 10000);
-  let newJsContent = String(newJs?.content || '');
+  const newJsContent = String(newJs?.content || '');
   if (!newJsContent || newJsContent.length < 500) throw new Error('新文件内容异常');
-  if (prevVer) newJsContent = newJsContent.replace(/const _PREV_VER = '[^']*'/, `const _PREV_VER = '${prevVer}'`);
   
   let found = false, newText = currentText, match;
   while ((match = pluginRegex.exec(currentText)) !== null) {
@@ -101,7 +87,7 @@ const _performUpdateFlow = async () => {
   _updating = true;
   const { close: closeLoading } = createFixedToast('ufi_theme_updating', '正在更新...');
   try {
-    await _applyPluginJs(_manifest.js, _PREV_VER);
+    await _applyPluginJs(_manifest.js);
     closeLoading();
     createToast('已更新到 v' + _manifest.version + '，2秒后刷新页面', 'green');
     setTimeout(() => location.reload(), 2000);
@@ -402,7 +388,6 @@ const applyIcons = () => {
       let bgColor = styleData.bg || '';
       let bgType = styleData.bgType;
       let borderColor = styleData.border || '';
-      
       if (styleData.gradient) {
         const gid = 'ufiGrad_' + Math.random().toString(36).substr(2, 9);
         const colors = styleData.gradientColors || ['#4ade80', '#3b82f6'];
@@ -410,7 +395,6 @@ const applyIcons = () => {
         defs = `<defs><linearGradient id="${gid}" x1="0%" y1="0%" x2="100%" y2="100%">${stops}</linearGradient></defs>`;
         fill = `url(#${gid})`;
       }
-      
       if (colorfulMode) {
         const funcColor = COLOR_MAP[item.key] || '#3b82f6';
         bgColor = funcColor;
@@ -419,9 +403,7 @@ const applyIcons = () => {
         strokeColor = '#ffffff';
         fill = 'none';
       }
-      
       iconEl.innerHTML = `<svg viewBox="0 0 24 24" fill="${fill}" fill-opacity="${styleData.fillOpacity || 1}" stroke="${strokeColor}" stroke-width="${styleData.stroke || 2}" stroke-linecap="${styleData.linecap || 'round'}" stroke-linejoin="${styleData.linejoin || 'round'}" ${styleData.dasharray ? `stroke-dasharray="${styleData.dasharray}"` : ''} style="${svgStyle}">${defs}${svgPath}</svg>`;
-      
       if (bgColor || borderColor) {
         iconEl.style.display = 'inline-flex';
         iconEl.style.alignItems = 'center';
@@ -540,7 +522,6 @@ const renderUI = () => {
       let previewStroke = 'currentColor';
       let previewBg = '';
       let previewBgType = s.bgType;
-      
       if (colorfulMode) {
         previewStroke = '#ffffff';
         previewBg = colorPalette[i % colorPalette.length];
@@ -559,7 +540,6 @@ const renderUI = () => {
       if (s.shadow) prevStyle += `filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));`;
       if (s.doubleLine) prevStyle += `filter: drop-shadow(0 0 1px rgba(0,0,0,0.8)) drop-shadow(0 0 1px rgba(255,255,255,0.5));`;
       sPreview = `<svg viewBox="0 0 24 24" fill="${fill}" fill-opacity="${s.fillOpacity || 1}" stroke="${previewStroke}" stroke-width="${s.stroke || 2}" stroke-linecap="${s.linecap || 'round'}" stroke-linejoin="${s.linejoin || 'round'}" ${s.dasharray ? `stroke-dasharray="${s.dasharray}"` : ''} style="${prevStyle}">${defs}${s.lib['settings'] || ''}</svg>`;
-      
       if (colorfulMode && previewBg) {
         let br = '6px';
         if (previewBgType === 'circle') br = '50%';
@@ -651,22 +631,8 @@ const resumeObserver = () => {
 ensureStyle();
 initObserver();
 
-const openModal = async () => {
-  let hasUpdate = false;
-  try {
-    const m = await _fetchManifest();
-    if (m && m.version !== _PREV_VER) {
-      _manifest = m;
-      hasUpdate = true;
-    }
-  } catch (e) {
-    console.warn('[Theme Updater] 检查更新失败:', e);
-  }
-
-  let titleHtml = '<span style="font-size:1.05rem;">🎨 shbay主题风格插件</span> <span style="font-size:.65rem;opacity:.6;font-weight:normal;margin-left:6px;">v' + _PREV_VER + '</span>';
-  if (hasUpdate) {
-    titleHtml += ' <span id="ufi-title-update" style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;font-size:.65rem;color:#4ade80;cursor:pointer;font-weight:normal;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 4px #4ade80;"></span>有新版本！</span>';
-  }
+const openModal = () => {
+  const titleHtml = '<span style="font-size:1.05rem;">🎨 shbay主题风格插件</span> <span style="font-size:.65rem;opacity:.6;font-weight:normal;margin-left:6px;">v' + _PREV_VER + '</span>';
 
   const { el, id } = createModal({
     name: MODAL,
@@ -679,21 +645,31 @@ const openModal = async () => {
   });
   pauseObserver();
   showModal(id);
-  
-  const updateBtn = el.querySelector('#ufi-title-update');
-  if (updateBtn) {
-    updateBtn.onclick = () => _performUpdateFlow();
-  }
-  
   bindUI(el);
+
+  (async () => {
+    try {
+      const m = await _fetchManifest();
+      if (!m || m.version === _PREV_VER) return;
+      _manifest = m;
+      const titleEl = el.querySelector('.title');
+      if (!titleEl || titleEl.querySelector('#ufi-title-update')) return;
+      const btn = document.createElement('span');
+      btn.id = 'ufi-title-update';
+      btn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:6px;font-size:.65rem;color:#4ade80;cursor:pointer;font-weight:normal;';
+      btn.innerHTML = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 4px #4ade80;"></span>有新版本！';
+      btn.onclick = () => _performUpdateFlow();
+      titleEl.appendChild(btn);
+    } catch (e) {
+      console.warn('[Theme Updater] 检查更新失败:', e);
+    }
+  })();
 };
 
 const mainBtn = document.createElement('button');
 mainBtn.textContent = '主题风格';
 mainBtn.onclick = openModal;
 document.querySelector('.actions-buttons')?.appendChild(mainBtn);
-
-setTimeout(() => { _checkUpdateInBackground(); }, 3000);
 
 })();
 </script>
