@@ -1,6 +1,6 @@
 <script>
 (async () => {
-const _PREV_VER = '1.0.1';
+const _PREV_VER = '1.0.2';//版本
 const _SIG = '@@THEME_PLUGIN_ID@@';
 const UPDATE_CHECK_URL = 'https://cdn.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/latest.json';
 let _manifest = null;
