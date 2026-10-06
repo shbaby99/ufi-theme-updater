@@ -1,10 +1,12 @@
 <script>
 (async () => {
-const _PREV_VER = '1.0.2';//新版本
+const _PREV_VER = '1.0.0';
 const _SIG = '@@THEME_PLUGIN_ID@@';
 const UPDATE_CHECK_URL = 'https://cdn.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/latest.json';
+const PREF_FILE = '/sdcard/ufi_theme_pref.json';
 let _manifest = null;
 let _updating = false;
+let installed = false;
 
 const _sq = (v) => `'${String(v ?? '').replace(/'/g, `'\\''`)}'`;
 const _wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -31,23 +33,19 @@ const _fetchManifest = async () => {
 const _applyPluginJs = async (newJsUrl) => {
   const tmpJs = '/data/local/tmp/_theme_new.js';
   await _run(`rm -f ${_sq(tmpJs)}`, 2000);
-    await _run(`curl -sL --connect-timeout 8 --max-time 60 ${_sq(newJsUrl)} -o ${_sq(tmpJs)}`, 65000);
+  await _run(`curl -sL --connect-timeout 8 --max-time 60 ${_sq(newJsUrl)} -o ${_sq(tmpJs)}`, 65000);
   const sizeR = await _run(`stat -c %s ${_sq(tmpJs)} 2>/dev/null || echo 0`, 5000);
   const size = parseInt(String(sizeR?.content || '0').trim(), 10) || 0;
   if (size < 500) { await _run(`rm -f ${_sq(tmpJs)}`); throw new Error('新文件下载失败或过小(实际:' + size + ')'); }
-  
   const currentText = await getCustomHead();
   if (!currentText) throw new Error('无法读取插件列表');
-  
   const _esc = s => s.replace(/[\[\]]/g, '\\$&');
   const _PS = '<!-- [KANO_PLUGIN_START]';
   const _PE = '<!-- [KANO_PLUGIN_END]';
   const pluginRegex = new RegExp(_esc(_PS) + '\\s*(.*?)\\s*-->([\\s\\S]*?)' + _esc(_PE) + '\\s*\\1\\s*-->', 'g');
-  
   const newJs = await _run(`cat ${_sq(tmpJs)}`, 10000);
   const newJsContent = String(newJs?.content || '');
   if (!newJsContent || newJsContent.length < 500) throw new Error('新文件内容异常');
-  
   let found = false, newText = currentText, match;
   while ((match = pluginRegex.exec(currentText)) !== null) {
     if (match[2].includes(_SIG)) {
@@ -98,13 +96,36 @@ const _performUpdateFlow = async () => {
   } finally { _updating = false; }
 };
 
+const checkInstalled = async () => {
+  const r = await _run(`[ -f ${_sq(PREF_FILE)} ] && echo 1 || echo 0`, 3000);
+  return String(r?.content || '').trim() === '1';
+};
+
+const loadPrefFromFile = async () => {
+  const r = await _run(`cat ${_sq(PREF_FILE)} 2>/dev/null || echo '{}'`, 5000);
+  try {
+    const j = JSON.parse(String(r?.content || '{}').trim());
+    if (j.style) currentStyle = j.style;
+    if (typeof j.colorful === 'boolean') colorfulMode = j.colorful;
+  } catch {}
+};
+
+const savePrefToFile = async () => {
+  const data = JSON.stringify({ style: currentStyle, colorful: colorfulMode });
+  await _run(`printf '%s' ${_sq(data)} > ${_sq(PREF_FILE)}`, 5000);
+};
+
+const removePrefFile = async () => {
+  await _run(`rm -f ${_sq(PREF_FILE)}`, 5000);
+};
+
 const MODAL = 'ufi_icon_switcher_modal';
 const STYLE_ID = 'ufi_icon_switcher_style';
 const STORE_KEY = 'ufi_icon_style_pref';
 const COLOR_KEY = 'ufi_icon_colorful_pref';
 
-let currentStyle = localStorage.getItem(STORE_KEY) || 'material';
-let colorfulMode = localStorage.getItem(COLOR_KEY) === 'true';
+let currentStyle = 'material';
+let colorfulMode = false;
 let observer = null;
 
 const logoSvgData = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#4CAE50" rx="80"/><rect x="80" y="120" width="352" height="200" rx="40" fill="#FCE6DD" stroke="#611624" stroke-width="24"/><path d="M160 200 Q256 140 352 200" fill="none" stroke="#611624" stroke-width="20"/><path d="M190 240 Q256 190 322 240" fill="none" stroke="#611624" stroke-width="20"/><path d="M220 280 Q256 240 292 280" fill="none" stroke="#611624" stroke-width="20"/><circle cx="256" cy="310" r="16" fill="#611624"/><rect x="80" y="320" width="352" height="80" rx="30" fill="#F5A69F" stroke="#611624" stroke-width="24"/><circle cx="140" cy="360" r="10" fill="#611624"/><circle cx="200" cy="360" r="10" fill="#611624"/><circle cx="260" cy="360" r="10" fill="#611624"/><circle cx="320" cy="360" r="10" fill="#611624"/><circle cx="380" cy="360" r="10" fill="#611624"/></svg>';
@@ -494,7 +515,15 @@ const ensureStyle = () => {
   document.head.appendChild(el);
 };
 
+const renderInstallUI = () => {
+  return `<div style="text-align:center;padding:30px 10px;">
+    <div style="font-size:.75rem;opacity:.6;margin-bottom:16px;">插件尚未安装</div>
+    <button id="ufi_theme_install" style="font-size:.85rem;padding:10px 32px;border-radius:10px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.25);color:#86efac;cursor:pointer;font-weight:bold;">安装插件</button>
+  </div>`;
+};
+
 const renderUI = () => {
+  if (!installed) return renderInstallUI();
   const colorPalette = ['#f43f5e', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
   const styleKeys = Object.keys(STYLE_LIBS);
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:0 4px;">
@@ -564,16 +593,70 @@ const renderUI = () => {
 };
 
 const bindUI = (el) => {
+  const installBtn = el.querySelector('#ufi_theme_install');
+  if (installBtn) {
+        installBtn.onclick = async () => {
+      currentStyle = 'system';
+      colorfulMode = false;
+      await savePrefToFile();
+      installed = true;
+      createToast('安装成功', 'green');
+      const box = document.querySelector('#' + MODAL + ' .content');
+      if (box) {
+        box.innerHTML = renderUI();
+        bindUI(box);
+      }
+      setTimeout(() => {
+        const modalEl = document.getElementById(MODAL);
+        if (!modalEl) return;
+        const closeBtn = [...modalEl.querySelectorAll('button')].find(
+          b => b.textContent.trim() === '关闭'
+        );
+        if (!closeBtn || closeBtn.dataset.ufiUninstallInjected) return;
+
+        const parent = closeBtn.parentNode;
+        parent.style.display = 'flex';
+        parent.style.justifyContent = 'space-between';
+        parent.style.width = '100%';
+        parent.style.alignItems = 'center';
+
+        const uninstallBtn = document.createElement('button');
+        uninstallBtn.textContent = '卸载插件';
+        uninstallBtn.style.cssText = 'font-size:.62rem;padding:5px 14px;border-radius:7px;border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.15);color:#fca5a5;cursor:pointer;';
+        parent.insertBefore(uninstallBtn, parent.firstChild);
+        closeBtn.dataset.ufiUninstallInjected = 'true';
+
+        let clicks = 0, timer = null;
+        uninstallBtn.onclick = async () => {
+          clicks++;
+          if (clicks === 1) {
+            createToast('再点一次确认卸载！！', 'yellow', 2000);
+            timer = setTimeout(() => { clicks = 0; }, 3000);
+          } else {
+            clearTimeout(timer);
+            clicks = 0;
+            await removePrefFile();
+            installed = false;
+            createToast('已卸载，正在刷新...', 'green');
+            setTimeout(() => location.reload(), 1000);
+          }
+        };
+      }, 20);
+    };
+    return;
+  }
+
   const colorToggle = el.querySelector('#ufi_color_toggle');
   if (colorToggle) {
-    colorToggle.onclick = () => {
+    colorToggle.onclick = async () => {
       colorfulMode = !colorfulMode;
-      localStorage.setItem(COLOR_KEY, colorfulMode);
+      await savePrefToFile();
       location.reload();
     };
   }
+
   el.querySelectorAll('.skin-card').forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
       const styleKey = card.getAttribute('data-style');
       if (styleKey === currentStyle) return;
       const box = document.querySelector('#' + MODAL + ' .content');
@@ -588,8 +671,9 @@ const bindUI = (el) => {
           </div>
         </div>
       `;
-      document.getElementById('ufi_skin_yes').onclick = () => {
-        localStorage.setItem(STORE_KEY, styleKey);
+      document.getElementById('ufi_skin_yes').onclick = async () => {
+        currentStyle = styleKey;
+        await savePrefToFile();
         location.reload();
       };
       document.getElementById('ufi_skin_no').onclick = () => {
@@ -626,11 +710,9 @@ const pauseObserver = () => {
 };
 
 const resumeObserver = () => {
+  if (!installed) return;
   if (!observer) { initObserver(); }
 };
-
-ensureStyle();
-initObserver();
 
 const openModal = () => {
   const titleHtml = '<span style="font-size:1.05rem;">🎨 shbay主题风格插件</span> <span style="font-size:.65rem;opacity:.6;font-weight:normal;margin-left:6px;">v' + _PREV_VER + '</span>';
@@ -647,6 +729,48 @@ const openModal = () => {
   pauseObserver();
   showModal(id);
   bindUI(el);
+
+    if (installed) {
+    setTimeout(() => {
+      const modalEl = document.getElementById(MODAL);
+      if (!modalEl) return;
+
+      const closeBtn = [...modalEl.querySelectorAll('button')].find(
+        b => b.textContent.trim() === '关闭'
+      );
+      if (!closeBtn || closeBtn.dataset.ufiUninstallInjected) return;
+
+      const parent = closeBtn.parentNode;
+      parent.style.display = 'flex';
+      parent.style.justifyContent = 'space-between';
+      parent.style.width = '100%';
+      parent.style.alignItems = 'center';
+
+      const uninstallBtn = document.createElement('button');
+      uninstallBtn.textContent = '卸载插件';
+      uninstallBtn.style.cssText = 'font-size:.62rem;padding:5px 14px;border-radius:7px;border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.15);color:#fca5a5;cursor:pointer;';
+      parent.insertBefore(uninstallBtn, parent.firstChild);
+      closeBtn.dataset.ufiUninstallInjected = 'true';
+
+      let clicks = 0, timer = null;
+      uninstallBtn.onclick = async () => {
+        clicks++;
+        if (clicks === 1) {
+          createToast('再点一次确认卸载！！', 'yellow', 2000);
+          timer = setTimeout(() => { clicks = 0; }, 3000);
+        } else {
+          clearTimeout(timer);
+          clicks = 0;
+          await removePrefFile();
+          installed = false;
+          createToast('已卸载，正在刷新...', 'green');
+          setTimeout(() => location.reload(), 1000);
+        }
+      };
+    }, 300);
+  }
+
+  if (!installed) return;
 
   (async () => {
     try {
@@ -671,6 +795,13 @@ const mainBtn = document.createElement('button');
 mainBtn.textContent = '主题风格';
 mainBtn.onclick = openModal;
 document.querySelector('.actions-buttons')?.appendChild(mainBtn);
+
+installed = await checkInstalled();
+if (installed) {
+  await loadPrefFromFile();
+  ensureStyle();
+  initObserver();
+}
 
 })();
 </script>
