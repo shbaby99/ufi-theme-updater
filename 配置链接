@@ -1,2 +1,6 @@
 //混淆工具
 https://obfuscator.io/legacy-playground
+
+//清 jsDelivr 缓存
+https://purge.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/latest.json
+https://purge.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/theme-v1.0.2.js
