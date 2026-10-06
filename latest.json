@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "notes": "测试自动更新功能3",
   "js": "https://cdn.jsdelivr.net/gh/shbaby99/ufi-theme-updater@main/theme-v1.0.1.js"
 }
